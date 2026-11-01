@@ -12,6 +12,7 @@ async def main() -> None:
             }
         }
     )
+
     tools = await client.get_tools()
     ping = next(t for t in tools if t.name == "ping")
 
