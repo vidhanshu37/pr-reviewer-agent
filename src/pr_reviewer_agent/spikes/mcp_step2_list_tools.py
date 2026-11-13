@@ -18,7 +18,9 @@ async def main() -> None:
     for i in range(3):
         started = time.perf_counter()
         result = await ping.ainvoke({"message": f"hello {i}"})
-        elapsed_ms = (time.perf_counter() - started) * 1000
+        elapsed_ms = (time.perf_counter()    - started) * 1000
         print(f"call {i}: {elapsed_ms:.0f} ms | type={type(result).__name__} | result={result!r}")
 #         print()
+
+
 asyncio.run(main())
