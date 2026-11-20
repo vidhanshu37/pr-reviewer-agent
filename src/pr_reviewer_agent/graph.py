@@ -14,7 +14,7 @@ def _reason(exec: BaseException) -> str:
 
 async def fetch(state: ReviewState) -> dict:
     try:
-        diff = await call_tool(state["mcp_token"], "get_pr_diff")
+        diff = await call_tool(state["mcp_token"], "get_full_pr_diff")
     except Exception as exc:
         return {"error": f"fetch failed: {_reason(exc)}", "trace": ["fetch: failed"]}
 
