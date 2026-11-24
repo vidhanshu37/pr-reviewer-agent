@@ -1,12 +1,12 @@
 import logging
 import re
+from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, field_validator
-
+from pr_reviewer_agent.slicing import DiffSlice, SlicePlan
 from pr_reviewer_agent.llm import LLMClient, LLMError, UsageTotals, get_llm
 from pr_reviewer_agent.schemas import Category, Finding, Severity
-from pr_reviewer_agent.slicing import DiffSlice
 
 logger = logging.getLogger(__name__)
 
@@ -67,43 +67,70 @@ def to_findings(raw: list[RawFinding], category: Category, allowed: dict[str, se
 def _short(exc: Exception) -> str:
     return " ".join(str(exc).split())[:240]
 
-async def run_specialist(name: str, category: Category, system_prompt: str, diff_slice: DiffSlice,
-                         llm: LLMClient | None = None) -> dict:
-    """One specialist = slice -> LLM -> parse -> validate against the diff. Fails SOFT: never kills the review."""
-    if not diff_slice.included:
-        return {"trace": [f"{name}: nothing to review"]}
+@dataclass
+class BatchOutcome:
+    findings: list[Finding] = field(default_factory=list)
+    dropped: int = 0
+    error: str | None = None
+    fatal: bool = False  # LLM itself is failing (quota, bad request): do not hammer it with more batches
 
-    llm = llm or get_llm()
-    totals = UsageTotals()
-    messages = [SystemMessage(content=system_prompt), HumanMessage(content=diff_slice.text)]
-    parsed: SpecialistOutput | None = None
 
+async def _review_batch(name: str, category: Category, system_prompt: str, batch: DiffSlice,
+                        llm: LLMClient, totals: UsageTotals) -> BatchOutcome:
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=batch.text)]
     for _ in range(MAX_RETRIES + 1):
         try:
             result = await llm.ainvoke(messages, accept=is_valid_output)
         except LLMError as exc:
-            return {"trace": [f"{name}: failed ({exc}); {totals.summary()}"]}
+            return BatchOutcome(error=str(exc), fatal=True)
         totals.add(result)
         try:
             parsed = parse_output(result.content)
-            break
         except ValueError as exc:
             logger.warning("%s: invalid model reply (%s): %.300s", name, _short(exc), result.content)
             messages = messages + [
                 AIMessage(content=result.content),
                 HumanMessage(content=f"Invalid reply ({_short(exc)}). Reply again with ONLY the JSON object."),
             ]
+            continue
+        findings, dropped = to_findings(parsed.findings, category, batch.added)
+        return BatchOutcome(findings=findings, dropped=dropped)
+    return BatchOutcome(error=f"model returned invalid JSON {MAX_RETRIES + 1} times")
 
-    if parsed is None:
-        return {"trace": [f"{name}: failed (model returned invalid JSON {MAX_RETRIES + 1} times); {totals.summary()}"]}
 
-    findings, dropped = to_findings(parsed.findings, category, diff_slice.added)
-    note = f", {len(diff_slice.skipped)} file(s) skipped for budget" if diff_slice.skipped else ""
-    note += ", slice truncated" if diff_slice.truncated else ""
+async def run_specialist(name: str, category: Category, system_prompt: str, plan: SlicePlan,
+                         llm: LLMClient | None = None) -> dict:
+    """One specialist = for each batch: LLM -> parse -> validate against the diff. Fails SOFT, reports coverage."""
+    if not plan.batches:
+        return {"trace": [f"{name}: nothing to review"]}
+
+    llm = llm or get_llm()
+    totals = UsageTotals()
+    findings: list[Finding] = []
+    dropped = reviewed = ok_batches = 0
+    failures: list[str] = []
+    truncated = False
+
+    for number, batch in enumerate(plan.batches, start=1):
+        outcome = await _review_batch(name, category, system_prompt, batch, llm, totals)
+        if outcome.error:
+            failures.append(f"batch {number}: {outcome.error}")
+            if outcome.fatal:
+                break  # remaining batches stay unreviewed
+            continue
+        findings += outcome.findings
+        dropped += outcome.dropped
+        reviewed += len(batch.included)
+        ok_batches += 1
+        truncated = truncated or batch.truncated
+
+    if ok_batches == 0:
+        return {"trace": [f"{name}: failed ({'; '.join(failures)}); {totals.summary()}"]}
+
+    note = "; slice truncated" if truncated else ""
+    note += f"; failed: {'; '.join(failures)}" if failures else ""
     return {
         "findings": findings,
-        "trace": [f"{name}: {len(findings)} finding(s), {dropped} dropped, "
-                  f"{len(diff_slice.included)} file(s) sent{note}; {totals.summary()}"],
+        "trace": [f"{name}: {len(findings)} finding(s), {dropped} dropped; reviewed {reviewed}/{plan.eligible} file(s) "
+                  f"in {ok_batches}/{len(plan.batches)} batch(es){note}; {totals.summary()}"],
     }
-
-

@@ -9,6 +9,7 @@ MCP_URL = os.environ.get("MCP_URL", "http://localhost:8081/mcp")
 
 # --- LLM (Groq free tier) ---
 SPECIALIST_SLICE_TOKENS = int(os.environ.get("SPECIALIST_SLICE_TOKENS", "3000"))
+SPECIALIST_MAX_BATCHES = int(os.environ.get("SPECIALIST_MAX_BATCHES", "2"))
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 GROQ_REASONING_EFFORT = os.environ.get("GROQ_REASONING_EFFORT", "low")
 GROQ_TIMEOUT_S = float(os.environ.get("GROQ_TIMEOUT_S", "60"))
