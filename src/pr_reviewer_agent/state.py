@@ -18,3 +18,4 @@ class ReviewState(TypedDict, total=False) :
     # reducers: every node ADDS to these, nobody overwrites them
     findings: Annotated[list[Finding], operator.add]
     trace: Annotated[list[str], operator.add]
+    merged: list[Finding]

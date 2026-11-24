@@ -27,7 +27,7 @@ async def review(request: ReviewRequest) -> ReviewResponse:
     return ReviewResponse(
         job_id=request.job_id,
         status="failed" if error else "done",
-        findings=final.get("findings", []),
+        findings=final.get("merged", final.get("findings", [])),
         trace=final.get("trace", []),
         error=error,
     )

@@ -6,6 +6,7 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from collections.abc import Callable
 
 import groq
 from langchain_core.messages import BaseMessage
@@ -185,7 +186,7 @@ class LLMClient:
             self._chat = ChatGroq(**kwargs)
         return self._chat
 
-    async def ainvoke(self, messages: list[BaseMessage]) -> LLMResult:
+    async def ainvoke(self, messages: list[BaseMessage], *, accept: Callable[[str], bool] | None = None) -> LLMResult:
         params = {"temperature": 0, "max_tokens": self._max_output, "reasoning_effort": config.GROQ_REASONING_EFFORT}
         key = DiskCache.key(self._model, messages, params) if self._cache else None
         if key:
@@ -224,7 +225,7 @@ class LLMClient:
                 self._window.settle(entry, usage.total_tokens)
                 if not text.strip():
                     raise LLMError("LLM returned an empty answer (reasoning may have used the whole output budget)")
-                if key:
+                if key and (accept is None or accept(text)):
                     self._cache.put(key, {"content": text, "usage": asdict(usage)})
                 return LLMResult(text, usage, cached=False, attempts=attempt)
 

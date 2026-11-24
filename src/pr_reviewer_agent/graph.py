@@ -1,9 +1,11 @@
 from langgraph.graph import END, StateGraph
-
+from pr_reviewer_agent.specialists.security import security_node
 from pr_reviewer_agent.diff_utils import parse_diff
 from pr_reviewer_agent.mcp_client import call_tool
 from pr_reviewer_agent.state import ReviewState
 from pr_reviewer_agent.triage import select_specialists, ORDER
+from pr_reviewer_agent.merge import merge_findings
+from pr_reviewer_agent.specialists.bugs import bugs_node
 
 
 def _reason(exec: BaseException) -> str:
@@ -36,7 +38,8 @@ def _stub(name: str):
     return node
 
 def merge(state: ReviewState) -> dict:
-    return {"trace": [f"merge: {len(state.get('findings', []))} finding(s)"]}
+    merged, duplicates = merge_findings(state.get("findings", []))
+    return {"merged": merged, "trace": [f"merge: {len(merged)} finding(s), {duplicates} duplicate(s) dropped"]}
 
 def _next_after(current: str | None):
     """Router: go to the next selected specialist after `current`, else to merge."""
@@ -60,8 +63,9 @@ def build_graph():
     g.add_node("fetch", fetch)
     g.add_node("triage", triage)
     g.add_node("merge", merge)
+    real_nodes = {"security": security_node, "bugs": bugs_node}
     for name in ORDER:
-        g.add_node(name, _stub(name))
+        g.add_node(name, real_nodes.get(name, _stub(name)))
 
     g.set_entry_point("fetch")
     g.add_conditional_edges("fetch", lambda s: "end" if s.get("error") else "triage",
