@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, field_validator
+from collections.abc import Awaitable, Callable
 from pr_reviewer_agent.slicing import DiffSlice, SlicePlan
 from pr_reviewer_agent.llm import LLMClient, LLMError, UsageTotals, get_llm
 from pr_reviewer_agent.schemas import Category, Finding, Severity
@@ -73,7 +74,7 @@ class BatchOutcome:
     dropped: int = 0
     error: str | None = None
     fatal: bool = False  # LLM itself is failing (quota, bad request): do not hammer it with more batches
-
+    note: str = ""  # extra trace text
 
 async def _review_batch(name: str, category: Category, system_prompt: str, batch: DiffSlice,
                         llm: LLMClient, totals: UsageTotals) -> BatchOutcome:
@@ -98,8 +99,9 @@ async def _review_batch(name: str, category: Category, system_prompt: str, batch
     return BatchOutcome(error=f"model returned invalid JSON {MAX_RETRIES + 1} times")
 
 
-async def run_specialist(name: str, category: Category, system_prompt: str, plan: SlicePlan,
-                         llm: LLMClient | None = None) -> dict:
+ReviewFn = Callable[[DiffSlice, LLMClient, UsageTotals], Awaitable[BatchOutcome]]
+
+async def run_specialist(name: str, category: Category, system_prompt: str, plan: SlicePlan, llm: LLMClient | None = None, review: ReviewFn | None = None) -> dict:
     """One specialist = for each batch: LLM -> parse -> validate against the diff. Fails SOFT, reports coverage."""
     if not plan.batches:
         return {"trace": [f"{name}: nothing to review"]}
@@ -110,9 +112,15 @@ async def run_specialist(name: str, category: Category, system_prompt: str, plan
     dropped = reviewed = ok_batches = 0
     failures: list[str] = []
     truncated = False
+    notes: list[str] = []
+    if review is None:  # default strategy: plain "diff in, JSON out"
+        async def review(batch, llm, totals):
+            return await _review_batch(name, category, system_prompt, batch, llm, totals)
 
     for number, batch in enumerate(plan.batches, start=1):
-        outcome = await _review_batch(name, category, system_prompt, batch, llm, totals)
+        outcome = await review(batch, llm, totals)
+        if outcome.note:
+            notes.append(outcome.note)
         if outcome.error:
             failures.append(f"batch {number}: {outcome.error}")
             if outcome.fatal:
@@ -128,6 +136,7 @@ async def run_specialist(name: str, category: Category, system_prompt: str, plan
         return {"trace": [f"{name}: failed ({'; '.join(failures)}); {totals.summary()}"]}
 
     note = "; slice truncated" if truncated else ""
+    note += "".join(f"; {n}" for n in notes)
     note += f"; failed: {'; '.join(failures)}" if failures else ""
     return {
         "findings": findings,
