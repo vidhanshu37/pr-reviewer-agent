@@ -60,3 +60,9 @@ def bugs_score(path: str, patch: str) -> int:
     size_bonus = min(len(added.splitlines()) // 20, 5)
     risk_bonus = min(len(BUG_CODE.findall(added)), 5)
     return 2 + size_bonus + risk_bonus
+
+def conventions_score(path: str, patch: str) -> int:
+    """Convention drift shows in non-test code with real new logic. 0 = skip."""
+    if not patch or is_test_file(path) or not path.lower().endswith(CODE_EXT):
+        return 0
+    return 2 + min(len(added_lines(patch).splitlines()) // 15, 6)

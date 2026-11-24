@@ -6,6 +6,7 @@ from pr_reviewer_agent.state import ReviewState
 from pr_reviewer_agent.triage import select_specialists, ORDER
 from pr_reviewer_agent.merge import merge_findings
 from pr_reviewer_agent.specialists.bugs import bugs_node
+from pr_reviewer_agent.specialists.conventions import conventions_node
 
 
 def _reason(exec: BaseException) -> str:
@@ -63,7 +64,7 @@ def build_graph():
     g.add_node("fetch", fetch)
     g.add_node("triage", triage)
     g.add_node("merge", merge)
-    real_nodes = {"security": security_node, "bugs": bugs_node}
+    real_nodes = {"security": security_node, "bugs": bugs_node, "conventions": conventions_node}
     for name in ORDER:
         g.add_node(name, real_nodes.get(name, _stub(name)))
 

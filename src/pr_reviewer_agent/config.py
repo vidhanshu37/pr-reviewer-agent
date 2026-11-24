@@ -18,3 +18,6 @@ LLM_MAX_OUTPUT_TOKENS = int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "1500"))
 LLM_MAX_ATTEMPTS = int(os.environ.get("LLM_MAX_ATTEMPTS", "4"))
 LLM_CACHE_ENABLED = os.environ.get("LLM_CACHE", "1") == "1"
 LLM_CACHE_DIR = Path(os.environ.get("LLM_CACHE_DIR", ".cache/llm"))
+CONVENTIONS_SLICE_TOKENS = int(os.environ.get("CONVENTIONS_SLICE_TOKENS", "2500"))
+CONVENTIONS_MAX_SEARCHES = int(os.environ.get("CONVENTIONS_MAX_SEARCHES", "3"))
+CONVENTIONS_RESULT_CHARS = int(os.environ.get("CONVENTIONS_RESULT_CHARS", "1500"))

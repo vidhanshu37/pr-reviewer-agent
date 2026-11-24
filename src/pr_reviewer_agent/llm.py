@@ -18,6 +18,10 @@ class LLMError(Exception):
     """The LLM call cannot succeed (bad request, empty answer, retries exhausted)."""
 
 
+class ToolCallError(LLMError):
+    """The model produced a malformed tool call (Groq: 400 tool_use_failed). Caller may retry WITHOUT tools."""
+
+
 @dataclass
 class CallUsage:
     input_tokens: int = 0
@@ -34,6 +38,7 @@ class LLMResult:
     usage: CallUsage
     cached: bool = False
     attempts: int = 1
+    tool_calls: list = field(default_factory=list)  # [{"name": ..., "args": {...}}] when the model asked for tools
 
 
 @dataclass
@@ -186,15 +191,20 @@ class LLMClient:
             self._chat = ChatGroq(**kwargs)
         return self._chat
 
-    async def ainvoke(self, messages: list[BaseMessage], *, accept: Callable[[str], bool] | None = None) -> LLMResult:
-        params = {"temperature": 0, "max_tokens": self._max_output, "reasoning_effort": config.GROQ_REASONING_EFFORT}
+    async def ainvoke(self, messages: list[BaseMessage], *, accept: Callable[[str], bool] | None = None, tools: list[dict] | None = None) -> LLMResult:
+        params = {"temperature": 0, "max_tokens": self._max_output,
+                  "reasoning_effort": config.GROQ_REASONING_EFFORT}
+
+        if tools:
+            params["tools"] = sorted(t["function"]["name"] for t in tools)
         key = DiskCache.key(self._model, messages, params) if self._cache else None
         if key:
             hit = self._cache.get(key)
-            if hit and hit.get("content"):
-                return LLMResult(hit["content"], CallUsage(), cached=True, attempts=0)
+            if hit and (hit.get("content") or hit.get("tool_calls")):
+                return LLMResult(hit.get("content", ""), CallUsage(), cached=True, attempts=0,
+                                 tool_calls=hit.get("tool_calls", []))
 
-        estimate = estimate_tokens(messages) + self._max_output
+        estimate = estimate_tokens(messages) + self._max_output + (300 if tools else 0)
         waited_total = 0.0
         last_reason = "unknown"
 
@@ -203,13 +213,18 @@ class LLMClient:
             waited_total += waited
             started = self._time()
             try:
-                response = await self._chat_model().ainvoke(messages)
+                model = self._chat_model()
+                if tools:
+                    model = model.bind_tools(tools)
+                response = await model.ainvoke(messages)
             except groq.RateLimitError as exc:
                 self._window.settle(entry, 0)
                 last_reason = "rate_limited"
                 delay = _retry_after(exc) or _backoff(attempt)
             except groq.APIStatusError as exc:
                 self._window.settle(entry, 0)
+                if tools and exc.status_code == 400 and "tool_use_failed" in f"{exc} {getattr(exc, 'body', '')}":
+                    raise ToolCallError("model produced a malformed tool call") from None
                 if exc.status_code < 500:
                     raise LLMError(f"LLM request rejected (HTTP {exc.status_code})") from None
                 last_reason = f"http_{exc.status_code}"
@@ -223,11 +238,14 @@ class LLMClient:
                 text = _text_of(response.content)
                 usage = _usage_from(response, latency, waited_total, estimate)
                 self._window.settle(entry, usage.total_tokens)
-                if not text.strip():
+
+                calls = [{"name": c.get("name"), "args": c.get("args") or {}}
+                         for c in (getattr(response, "tool_calls", None) or [])]
+                if not text.strip() and not calls:
                     raise LLMError("LLM returned an empty answer (reasoning may have used the whole output budget)")
-                if key and (accept is None or accept(text)):
-                    self._cache.put(key, {"content": text, "usage": asdict(usage)})
-                return LLMResult(text, usage, cached=False, attempts=attempt)
+                if key and (calls or accept is None or accept(text)):
+                    self._cache.put(key, {"content": text, "tool_calls": calls, "usage": asdict(usage)})
+                return LLMResult(text, usage, cached=False, attempts=attempt, tool_calls=calls)
 
             if attempt < self._max_attempts:
                 await self._sleep(delay)
