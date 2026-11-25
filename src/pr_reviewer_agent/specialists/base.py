@@ -104,7 +104,7 @@ ReviewFn = Callable[[DiffSlice, LLMClient, UsageTotals], Awaitable[BatchOutcome]
 async def run_specialist(name: str, category: Category, system_prompt: str, plan: SlicePlan, llm: LLMClient | None = None, review: ReviewFn | None = None) -> dict:
     """One specialist = for each batch: LLM -> parse -> validate against the diff. Fails SOFT, reports coverage."""
     if not plan.batches:
-        return {"trace": [f"{name}: nothing to review"]}
+        return {"trace": [f"{name}: nothing to review"], "stats": [{"node": name, "skipped": "nothing to review"}]}
 
     llm = llm or get_llm()
     totals = UsageTotals()
@@ -133,13 +133,17 @@ async def run_specialist(name: str, category: Category, system_prompt: str, plan
         truncated = truncated or batch.truncated
 
     if ok_batches == 0:
-        return {"trace": [f"{name}: failed ({'; '.join(failures)}); {totals.summary()}"]}
+        return {"trace": [f"{name}: failed ({'; '.join(failures)}); {totals.summary()}"],
+                "stats": [{"node": name, "failed": "; ".join(failures), "eligible": plan.eligible, **totals.as_dict()}]}
 
     note = "; slice truncated" if truncated else ""
     note += "".join(f"; {n}" for n in notes)
     note += f"; failed: {'; '.join(failures)}" if failures else ""
     return {
         "findings": findings,
+        "stats": [{"node": name, "findings": len(findings), "dropped": dropped, "reviewed": reviewed,
+                   "eligible": plan.eligible, "batches_ok": ok_batches, "batches": len(plan.batches),
+                   **totals.as_dict()}],
         "trace": [f"{name}: {len(findings)} finding(s), {dropped} dropped; reviewed {reviewed}/{plan.eligible} file(s) "
                   f"in {ok_batches}/{len(plan.batches)} batch(es){note}; {totals.summary()}"],
     }

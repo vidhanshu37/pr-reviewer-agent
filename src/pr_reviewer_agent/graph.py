@@ -7,7 +7,21 @@ from pr_reviewer_agent.triage import select_specialists, ORDER
 from pr_reviewer_agent.merge import merge_findings
 from pr_reviewer_agent.specialists.bugs import bugs_node
 from pr_reviewer_agent.specialists.conventions import conventions_node
+from pr_reviewer_agent.critic import critic_node
+import inspect
+import time
 
+def timed(name: str, node):
+    """Wrap a node: measure wall time and make sure it contributes exactly one stats entry."""
+    async def wrapper(state: ReviewState) -> dict:
+        started = time.monotonic()
+        result = node(state)
+        if inspect.isawaitable(result):
+            result = await result
+        entries = result.get("stats") or [{"node": name}]
+        entries[0]["wall_s"] = round(time.monotonic() - started, 2)
+        return {**result, "stats": entries}
+    return wrapper
 
 def _reason(exec: BaseException) -> str:
     # MCP client wraps real errors in ExceptionGroup; dig out the first leaf.
@@ -61,12 +75,13 @@ def _targets_after(current: str | None) -> list[str]:
 
 def build_graph():
     g = StateGraph(ReviewState)
-    g.add_node("fetch", fetch)
-    g.add_node("triage", triage)
-    g.add_node("merge", merge)
+    g.add_node("fetch", timed("fetch", fetch))
+    g.add_node("triage", timed("triage", triage))
+    g.add_node("merge", timed("merge", merge))
+    g.add_node("critic", timed("critic", critic_node))
     real_nodes = {"security": security_node, "bugs": bugs_node, "conventions": conventions_node}
     for name in ORDER:
-        g.add_node(name, real_nodes.get(name, _stub(name)))
+        g.add_node(name, timed(name, real_nodes.get(name, _stub(name))))   # specialists wale loop mein
 
     g.set_entry_point("fetch")
     g.add_conditional_edges("fetch", lambda s: "end" if s.get("error") else "triage",
@@ -77,7 +92,8 @@ def build_graph():
     g.add_conditional_edges("triage", _next_after(None), _targets_after(None))
     for name in ORDER:
         g.add_conditional_edges(name, _next_after(name), _targets_after(name))
-    g.add_edge("merge", END)
+    g.add_edge("merge", "critic")
+    g.add_edge("critic", END)
 
     return g.compile()
 
