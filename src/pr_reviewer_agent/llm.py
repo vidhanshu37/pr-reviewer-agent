@@ -4,7 +4,7 @@ import json
 import random
 import time
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from collections.abc import Callable
 
@@ -55,6 +55,10 @@ class UsageTotals:
         self.total_tokens += result.usage.total_tokens
         self.latency_s += result.usage.latency_s
         self.waited_s += result.usage.waited_s
+
+    def as_dict(self) -> dict:
+        return {"calls": self.calls, "cached": self.cache_hits, "tokens": self.total_tokens,
+                "call_s": round(self.latency_s, 2), "wait_s": round(self.waited_s, 2)}
 
     def summary(self) -> str:
         return (f"llm: {self.calls} call(s), {self.cache_hits} cached, "

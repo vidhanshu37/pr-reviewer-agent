@@ -19,3 +19,4 @@ class ReviewState(TypedDict, total=False) :
     findings: Annotated[list[Finding], operator.add]
     trace: Annotated[list[str], operator.add]
     merged: list[Finding]
+    stats: Annotated[list[dict], operator.add]  # one structured entry per node

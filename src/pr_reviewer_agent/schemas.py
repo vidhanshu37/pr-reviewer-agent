@@ -13,6 +13,7 @@ class Finding(BaseModel):
     category: Category
     message: str
     suggestion: str | None = None
+    verdict: Literal["confirmed", "uncertain"] | None = None  # set by the critic; None = not checked
 
 
 class ReviewRequest(BaseModel):
@@ -27,4 +28,5 @@ class ReviewResponse(BaseModel):
     status: Literal["done", "failed"]
     findings: list[Finding] = []
     trace: list[str] = []
+    stats: dict = {}
     error: str | None = None
