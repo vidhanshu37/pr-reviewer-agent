@@ -79,6 +79,7 @@ For every finding choose ONE verdict:
 
 Rules:
 - Reject ONLY with visible evidence. If in doubt choose "uncertain". Never reject because a finding seems minor.
+- A finding that says something is MISSING (no auth, no validation, no logging, no transaction) is NOT confirmed by the window alone, because it may be handled in another file (filter, config, base class, caller). Choose "confirmed" only if the problem is fully visible inside the window (e.g. a division by xs.size() with no check in the same method); otherwise "uncertain".
 - "reason" is at most 20 words.
 - Reply with ONLY one JSON object, no markdown, no extra text, one entry per finding id:
 {"verdicts":[{"id":"F1","verdict":"confirmed|rejected|uncertain","reason":"<short>"}]}
