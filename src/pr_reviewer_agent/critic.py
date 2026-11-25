@@ -127,14 +127,14 @@ async def run_critic(token: str, merged: list[Finding], llm: LLMClient | None = 
                    if files.get(f.file) else None for f in judged]
         if not any(windows):
             reason = f"no file content available for {len(judged)} finding(s)"
-            return {"trace": [f"critic: skipped ({reason})"], "stats": [{"node": "critic", "skipped": reason}]}
+            return {"trace": [f"critic: skipped ({reason})"], "stats": [{"node": "critic", "failed": reason}]}
         verdicts = await judge(judged, windows, llm or get_llm(), totals)
     except LLMError as exc:
         return {"trace": [f"critic: skipped ({exc}); {totals.summary()}"],
-                "stats": [{"node": "critic", "skipped": str(exc), **totals.as_dict()}]}
+                "stats": [{"node": "critic", "failed": str(exc), **totals.as_dict()}]}
     except Exception as exc:  # noqa: BLE001 - fail open, type only
         return {"trace": [f"critic: skipped ({type(exc).__name__})"],
-                "stats": [{"node": "critic", "skipped": type(exc).__name__}]}
+                "stats": [{"node": "critic", "failed": type(exc).__name__}]}
 
     kept, rejected, counts = apply_verdicts(judged, windows, verdicts)
     extra = f"; {len(unjudged)} not checked" if unjudged else ""

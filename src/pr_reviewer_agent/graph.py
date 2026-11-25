@@ -23,7 +23,7 @@ def timed(name: str, node):
         return {**result, "stats": entries}
     return wrapper
 
-def _reason(exec: BaseException) -> str:
+def _reason(exc: BaseException) -> str:
     # MCP client wraps real errors in ExceptionGroup; dig out the first leaf.
     while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
         exc = exc.exceptions[0]

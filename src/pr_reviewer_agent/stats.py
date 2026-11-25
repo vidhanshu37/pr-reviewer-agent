@@ -1,3 +1,17 @@
+from pr_reviewer_agent.triage import ORDER
+
+
+def compute_status(error: str | None, entries: list[dict]) -> tuple[str, list[str]]:
+    """done = everything ran | partial = a specialist failed (findings may be incomplete) | failed = no review at all.
+
+    A failed critic only adds a warning: its findings are unverified, but 'no issues' can never come from it."""
+    if error:
+        return "failed", [error]
+    warnings = [f"{e['node']}: {e['failed']}" for e in entries if e.get("failed")]
+    specialist_failed = any(e.get("failed") and e.get("node") in ORDER for e in entries)
+    return ("partial" if specialist_failed else "done"), warnings
+
+
 def build_stats(entries: list[dict], wall_s: float, rejected: list[dict]) -> dict:
     """Turn the per-node entries (state["stats"]) into one summary object for the response."""
     keys = ("calls", "cached", "tokens", "call_s", "wait_s")
@@ -11,6 +25,6 @@ def build_stats(entries: list[dict], wall_s: float, rejected: list[dict]) -> dic
             "confirmed": critic.get("confirmed", 0),
             "uncertain": critic.get("uncertain", 0),
             "rejected": rejected,
-            **({"skipped": critic["skipped"]} if "skipped" in critic else {}),
+            **({"failed": critic["failed"]} if "failed" in critic else {}),
         },
     }

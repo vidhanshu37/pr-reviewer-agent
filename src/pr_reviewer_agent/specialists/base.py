@@ -143,7 +143,7 @@ async def run_specialist(name: str, category: Category, system_prompt: str, plan
         "findings": findings,
         "stats": [{"node": name, "findings": len(findings), "dropped": dropped, "reviewed": reviewed,
                    "eligible": plan.eligible, "batches_ok": ok_batches, "batches": len(plan.batches),
-                   **totals.as_dict()}],
+                   **({"failed": "; ".join(failures)} if failures else {}), **totals.as_dict()}],
         "trace": [f"{name}: {len(findings)} finding(s), {dropped} dropped; reviewed {reviewed}/{plan.eligible} file(s) "
                   f"in {ok_batches}/{len(plan.batches)} batch(es){note}; {totals.summary()}"],
     }
