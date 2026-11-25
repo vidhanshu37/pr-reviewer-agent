@@ -25,8 +25,9 @@ class ReviewRequest(BaseModel):
 
 class ReviewResponse(BaseModel):
     job_id: str
-    status: Literal["done", "failed"]
+    status: Literal["done", "partial", "failed"]
     findings: list[Finding] = []
     trace: list[str] = []
+    warnings: list[str] = []
     stats: dict = {}
     error: str | None = None

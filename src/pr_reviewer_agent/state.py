@@ -4,7 +4,7 @@ from typing import Annotated, TypedDict
 from pr_reviewer_agent.schemas import Finding
 
 
-class ReviewState(TypedDict, total=False) :
+class ReviewState(TypedDict, total=False):
     # inputs (set once by /review)
     job_id: str
     repo: str
@@ -15,8 +15,9 @@ class ReviewState(TypedDict, total=False) :
     files: dict[str, str]
     selected: list[str]
     error: str | None
+    merged: list[Finding]
+    rejected: list[dict]  # findings the critic threw out + reason (for stats/eval)
     # reducers: every node ADDS to these, nobody overwrites them
     findings: Annotated[list[Finding], operator.add]
     trace: Annotated[list[str], operator.add]
-    merged: list[Finding]
     stats: Annotated[list[dict], operator.add]  # one structured entry per node

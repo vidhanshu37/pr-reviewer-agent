@@ -4,6 +4,7 @@ from pr_reviewer_agent.graph import review_graph
 from pr_reviewer_agent.schemas import ReviewRequest, ReviewResponse
 import time
 from pr_reviewer_agent.stats import build_stats
+from pr_reviewer_agent.stats import build_stats, compute_status
 
 app = FastAPI(title="PR Reviewer Agent")
 
@@ -28,12 +29,16 @@ async def review(request: ReviewRequest) -> ReviewResponse:
             "findings": [],
         }
     )
+
     error = final.get("error")
+    entries = final.get("stats", [])
+    status, warnings = compute_status(error, entries)
     return ReviewResponse(
         job_id=request.job_id,
-        status="failed" if error else "done",
+        status=status,
+        warnings=warnings,
         findings=final.get("merged", final.get("findings", [])),
         trace=final.get("trace", []),
-        stats=build_stats(final.get("stats", []), time.monotonic() - started, final.get("rejected", [])),
+        stats=build_stats(entries, time.monotonic() - started, final.get("rejected", [])),
         error=error,
     )
