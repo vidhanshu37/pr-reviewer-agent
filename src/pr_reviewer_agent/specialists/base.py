@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, field_validator
 from collections.abc import Awaitable, Callable
 from pr_reviewer_agent.slicing import DiffSlice, SlicePlan
+from pr_reviewer_agent.schemas import Category, Confidence, Finding, Severity
 from pr_reviewer_agent.llm import LLMClient, LLMError, UsageTotals, get_llm
 from pr_reviewer_agent.schemas import Category, Finding, Severity
 
@@ -23,11 +24,16 @@ class RawFinding(BaseModel):
     severity: Severity
     message: str
     suggestion: str | None = None
+    confidence: Confidence = "high"
 
-    @field_validator("severity", mode="before")
+    @field_validator("confidence", mode="before")
     @classmethod
-    def _normalise_severity(cls, value):
-        return value.strip().lower() if isinstance(value, str) else value
+    def _normalise_confidence(cls, value):
+        if value is None:
+            return "high"
+        value = value.strip().lower() if isinstance(value, str) else value
+        return value if value in ("high", "possible") else "possible"  # unknown wording: be modest, not wrong
+
 
 class SpecialistOutput(BaseModel):
     findings: list[RawFinding] = []
@@ -60,7 +66,7 @@ def to_findings(raw: list[RawFinding], category: Category, allowed: dict[str, se
             continue
         seen.add(key)
         kept.append(Finding(file=path, line=item.line, severity=item.severity, category=category,
-                            message=item.message.strip(), suggestion=item.suggestion))
+                            confidence=item.confidence, message=item.message.strip(), suggestion=item.suggestion))
         if len(kept) == MAX_FINDINGS:
             break
     return kept, len(raw) - len(kept)

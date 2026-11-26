@@ -48,6 +48,9 @@ class UsageTotals:
     calls: int = 0
     cache_hits: int = 0
     total_tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
     latency_s: float = 0.0
     waited_s: float = 0.0
 
@@ -57,9 +60,12 @@ class UsageTotals:
         self.total_tokens += result.usage.total_tokens
         self.latency_s += result.usage.latency_s
         self.waited_s += result.usage.waited_s
+        self.input_tokens += result.usage.input_tokens
+        self.output_tokens += result.usage.output_tokens
+        self.reasoning_tokens += result.usage.reasoning_tokens
 
     def as_dict(self) -> dict:
-        return {"calls": self.calls, "cached": self.cache_hits, "tokens": self.total_tokens,
+        return {"calls": self.calls, "cached": self.cache_hits, "tokens": self.total_tokens, "in": self.input_tokens, "out": self.output_tokens, "reasoning": self.reasoning_tokens,
                 "call_s": round(self.latency_s, 2), "wait_s": round(self.waited_s, 2)}
 
     def summary(self) -> str:

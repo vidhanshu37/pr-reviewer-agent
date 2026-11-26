@@ -15,6 +15,7 @@ def compute_status(error: str | None, entries: list[dict]) -> tuple[str, list[st
 def build_stats(entries: list[dict], wall_s: float, rejected: list[dict]) -> dict:
     """Turn the per-node entries (state["stats"]) into one summary object for the response."""
     keys = ("calls", "cached", "tokens", "call_s", "wait_s")
+    keys += tuple(k for k in ("in", "out", "reasoning") if any(k in e for e in entries))  # token breakdown, if reported
     totals = {k: round(sum(e.get(k, 0) for e in entries), 2) for k in keys}
     totals["wall_s"] = round(wall_s, 2)
     critic = next((e for e in entries if e.get("node") == "critic"), {})

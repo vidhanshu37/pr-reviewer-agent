@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 Severity = Literal["low", "medium", "high", "critical"]
 Category = Literal["security", "bug", "convention"]
+Confidence = Literal["high", "possible"]  # possible = plausible but depends on code the model cannot see
 
 
 class Finding(BaseModel):
@@ -11,6 +12,7 @@ class Finding(BaseModel):
     line: int | None = None
     severity: Severity
     category: Category
+    confidence: Confidence = "high"
     message: str
     suggestion: str | None = None
     verdict: Literal["confirmed", "uncertain"] | None = None  # set by the critic; None = not checked

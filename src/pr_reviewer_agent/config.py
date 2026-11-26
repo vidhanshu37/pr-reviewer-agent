@@ -35,3 +35,5 @@ NVIDIA_THINKING = os.environ.get("NVIDIA_THINKING", "0") == "1"  # off = faster,
 NVIDIA_TIMEOUT_S = float(os.environ.get("NVIDIA_TIMEOUT_S", "120"))
 
 LLM_MODEL = NVIDIA_MODEL if LLM_PROVIDER == "nvidia" else GROQ_MODEL
+
+AGENT_PARALLEL = os.environ.get("AGENT_PARALLEL", "0") == "1"

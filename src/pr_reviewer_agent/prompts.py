@@ -10,7 +10,8 @@ path traversal, insecure CORS/CSRF settings, sensitive data in logs, risky depen
 
 Rules:
 - Report an issue only on a line that starts with "L<number> +". Use exactly that number and the file path from the "### File:" header.
-- No style, naming or performance comments. If you are not sure it is a security problem, leave it out.
+- No style, naming or performance comments.
+- confidence "high": you are sure the added code has this problem. confidence "possible": it is plausible but depends on code you cannot see (callers, config, other files). If it is unlikely, leave it out.
 - At most 8 findings. Fewer is better. No duplicates.
 - severity is one of: low, medium, high, critical.
 - Reply with ONLY one JSON object, no markdown, no extra text:
@@ -32,7 +33,8 @@ race conditions, wrong API usage, incorrect type or unit handling, logic that co
 Rules:
 - Security vulnerabilities are handled by another reviewer: do NOT report them. No style, naming or formatting comments.
 - Report an issue only on a line that starts with "L<number> +". Use exactly that number and the file path from the "### File:" header.
-- If you are not sure it is a real bug, leave it out. At most 8 findings. Fewer is better. No duplicates.
+- confidence "high": you are sure it is a real bug. confidence "possible": it is plausible but depends on code you cannot see (callers, config, other files). If it is unlikely, leave it out.
+- At most 8 findings. Fewer is better. No duplicates.
 - severity is one of: low, medium, high, critical.
 - Reply with ONLY one JSON object, no markdown, no extra text:
 {"findings":[{"file":"<path>","line":<number>,"severity":"<level>","message":"<what is wrong and when it breaks>","suggestion":"<how to fix>"}]}
