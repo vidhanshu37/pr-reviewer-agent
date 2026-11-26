@@ -28,7 +28,7 @@ CRITIC_MAX_FINDINGS = int(os.environ.get("CRITIC_MAX_FINDINGS", "10"))
 CRITIC_WINDOW_LINES = int(os.environ.get("CRITIC_WINDOW_LINES", "12"))
 CRITIC_WINDOW_CHARS = int(os.environ.get("CRITIC_WINDOW_CHARS", "1200"))
 
-NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "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")
+NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 NVIDIA_MODEL = os.environ.get("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
 NVIDIA_THINKING = os.environ.get("NVIDIA_THINKING", "0") == "1"  # off = faster, answer comes straight in `content`
