@@ -90,7 +90,7 @@ Slice sizes, batch limits and critic limits are also environment variables; see 
 
 ## Run
 
-The full system (Spring app, Postgres, Redis, this service) is started from the `pr-reviewer` repo: see its [setup guide](https://github.com/vidhanshu37/pr-reviewer/blob/main/docs/SETUP.md).
+The full system (Spring app, Postgres, Redis, this service) is started from the `pr-reviewer` repo: see its [setup guide](https://github.com/vidhanshu37/pr-reviewer/blob/master/docs/SETUP.md).
 
 Standalone (needs a running MCP server and a valid job token, so mainly for development):
 
