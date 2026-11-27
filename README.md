@@ -1,0 +1,3 @@
+# this is readme file
+# PR review bot in this project is a GitHub App that automatically reviews pull requests using a large language model (LLM). It is designed to be lightweight and cost-effective, focusing on reviewing only the changed files in a PR.
+# The bot fetches the diff of the PR, grounds the review in the existing codebase using retrieval-augmented generation (RAG), and posts a structured review comment back on GitHub. The entire process is asynchronous, ensuring that GitHub's webhook never times out.

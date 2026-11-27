@@ -3,10 +3,12 @@ import hashlib
 import json
 import random
 import time
+import openai
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from collections.abc import Callable
+
 
 import groq
 from langchain_core.messages import BaseMessage
@@ -46,6 +48,9 @@ class UsageTotals:
     calls: int = 0
     cache_hits: int = 0
     total_tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
     latency_s: float = 0.0
     waited_s: float = 0.0
 
@@ -55,9 +60,12 @@ class UsageTotals:
         self.total_tokens += result.usage.total_tokens
         self.latency_s += result.usage.latency_s
         self.waited_s += result.usage.waited_s
+        self.input_tokens += result.usage.input_tokens
+        self.output_tokens += result.usage.output_tokens
+        self.reasoning_tokens += result.usage.reasoning_tokens
 
     def as_dict(self) -> dict:
-        return {"calls": self.calls, "cached": self.cache_hits, "tokens": self.total_tokens,
+        return {"calls": self.calls, "cached": self.cache_hits, "tokens": self.total_tokens, "in": self.input_tokens, "out": self.output_tokens, "reasoning": self.reasoning_tokens,
                 "call_s": round(self.latency_s, 2), "wait_s": round(self.waited_s, 2)}
 
     def summary(self) -> str:
@@ -143,6 +151,10 @@ class DiskCache:
         except OSError:
             pass  # cache is best-effort
 
+# Groq and NVIDIA (via the openai SDK) raise different exception classes; we handle both.
+_RATE_LIMIT = (groq.RateLimitError, openai.RateLimitError)
+_STATUS = (groq.APIStatusError, openai.APIStatusError)
+_CONNECTION = (groq.APIConnectionError, openai.APIConnectionError)
 
 def _retry_after(exc: groq.APIStatusError) -> float | None:
     try:
@@ -170,7 +182,7 @@ class LLMClient:
             sleep_fn=asyncio.sleep,
     ):
         self._chat = chat
-        self._model = model or config.GROQ_MODEL
+        self._model = model or config.LLM_MODEL
         self._max_output = max_output_tokens or config.LLM_MAX_OUTPUT_TOKENS
         self._max_attempts = max_attempts or config.LLM_MAX_ATTEMPTS
         self._time = time_fn
@@ -181,23 +193,46 @@ class LLMClient:
 
     def _chat_model(self):
         if self._chat is None:
-            from langchain_groq import ChatGroq  # imported lazily so tests/imports need no API key
-
-            kwargs = {
-                "model": self._model,
-                "temperature": 0,
-                "max_tokens": self._max_output,
-                "max_retries": 0,  # retries are OUR job (pacing + retry-after aware)
-                "timeout": config.GROQ_TIMEOUT_S,
-            }
-            if config.GROQ_REASONING_EFFORT:
-                kwargs["reasoning_effort"] = config.GROQ_REASONING_EFFORT
-            self._chat = ChatGroq(**kwargs)
+            self._chat = self._build_chat()
         return self._chat
 
+    def _build_chat(self):
+        # Imported lazily so tests/imports need no API key.
+        if config.LLM_PROVIDER == "nvidia":
+            from langchain_openai import ChatOpenAI
+
+            if not config.NVIDIA_API_KEY:
+                raise LLMError("NVIDIA_API_KEY is not set (put it in .env)")
+            template_kwargs = {"enable_thinking": config.NVIDIA_THINKING}
+            if config.NVIDIA_THINKING and config.NVIDIA_MEDIUM_EFFORT:
+                template_kwargs["medium_effort"] = True  # far fewer reasoning tokens than full thinking
+            return ChatOpenAI(
+                model=self._model,
+                base_url=config.NVIDIA_BASE_URL,
+                api_key=config.NVIDIA_API_KEY,
+                temperature=0,
+                max_tokens=self._max_output,
+                max_retries=0,  # retries are OUR job
+                timeout=config.NVIDIA_TIMEOUT_S,
+                extra_body={"chat_template_kwargs": template_kwargs},
+            )
+
+        from langchain_groq import ChatGroq
+
+        kwargs = {
+            "model": self._model,
+            "temperature": 0,
+            "max_tokens": self._max_output,
+            "max_retries": 0,  # retries are OUR job (pacing + retry-after aware)
+            "timeout": config.GROQ_TIMEOUT_S,
+        }
+        if config.GROQ_REASONING_EFFORT:
+            kwargs["reasoning_effort"] = config.GROQ_REASONING_EFFORT
+        return ChatGroq(**kwargs)
+
     async def ainvoke(self, messages: list[BaseMessage], *, accept: Callable[[str], bool] | None = None, tools: list[dict] | None = None) -> LLMResult:
-        params = {"temperature": 0, "max_tokens": self._max_output,
-                  "reasoning_effort": config.GROQ_REASONING_EFFORT}
+        params = {"temperature": 0, "max_tokens": self._max_output, "provider": config.LLM_PROVIDER,
+                  "reasoning": f"{config.NVIDIA_THINKING}-{config.NVIDIA_MEDIUM_EFFORT}" if config.LLM_PROVIDER == "nvidia" else config.GROQ_REASONING_EFFORT}
 
         if tools:
             params["tools"] = sorted(t["function"]["name"] for t in tools)
@@ -221,11 +256,11 @@ class LLMClient:
                 if tools:
                     model = model.bind_tools(tools)
                 response = await model.ainvoke(messages)
-            except groq.RateLimitError as exc:
+            except _RATE_LIMIT as exc:
                 self._window.settle(entry, 0)
                 last_reason = "rate_limited"
                 delay = _retry_after(exc) or _backoff(attempt)
-            except groq.APIStatusError as exc:
+            except _STATUS as exc:
                 self._window.settle(entry, 0)
                 if tools and exc.status_code == 400 and "tool_use_failed" in f"{exc} {getattr(exc, 'body', '')}":
                     raise ToolCallError("model produced a malformed tool call") from None
@@ -233,7 +268,7 @@ class LLMClient:
                     raise LLMError(f"LLM request rejected (HTTP {exc.status_code})") from None
                 last_reason = f"http_{exc.status_code}"
                 delay = _backoff(attempt)
-            except groq.APIConnectionError as exc:  # includes timeouts
+            except _CONNECTION as exc:  # includes timeouts
                 self._window.settle(entry, 0)
                 last_reason = type(exc).__name__
                 delay = _backoff(attempt)

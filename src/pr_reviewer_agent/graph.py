@@ -8,6 +8,7 @@ from pr_reviewer_agent.merge import merge_findings
 from pr_reviewer_agent.specialists.bugs import bugs_node
 from pr_reviewer_agent.specialists.conventions import conventions_node
 from pr_reviewer_agent.critic import critic_node
+from pr_reviewer_agent import config
 import inspect
 import time
 
@@ -73,7 +74,12 @@ def _targets_after(current: str | None) -> list[str]:
     start = 0 if current is None else ORDER.index(current) + 1
     return [*ORDER[start:], "merge"]
 
-def build_graph():
+def _fan_out(state: ReviewState) -> list[str]:
+    """Parallel mode: start ALL selected specialists in the same step; nothing selected -> straight to merge."""
+    return list(state.get("selected", [])) or ["merge"]
+
+def build_graph(parallel: bool | None = None):
+    parallel = config.AGENT_PARALLEL if parallel is None else parallel
     g = StateGraph(ReviewState)
     g.add_node("fetch", timed("fetch", fetch))
     g.add_node("triage", timed("triage", triage))
@@ -89,9 +95,17 @@ def build_graph():
 
     targets = {**{name: name for name in ORDER}, "merge": "merge", "end": END}
 
-    g.add_conditional_edges("triage", _next_after(None), _targets_after(None))
-    for name in ORDER:
-        g.add_conditional_edges(name, _next_after(name), _targets_after(name))
+    if parallel:
+        # Fan-out: every selected specialist runs in the same step; merge runs once, after all of them.
+        g.add_conditional_edges("triage", _fan_out, [*ORDER, "merge"])
+        for name in ORDER:
+            g.add_edge(name, "merge")
+    else:
+        # Each node may only go FORWARD, so the drawn graph matches what really happens.
+        g.add_conditional_edges("triage", _next_after(None), _targets_after(None))
+        for name in ORDER:
+            g.add_conditional_edges(name, _next_after(name), _targets_after(name))
+
     g.add_edge("merge", "critic")
     g.add_edge("critic", END)
 
